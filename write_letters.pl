@@ -1,5 +1,7 @@
 #! /bin/perl
 
+use Text::CSV; # sudo cpan Text::CSV
+
 sub slurp {
   my @lns;
   for (@_) {
@@ -36,15 +38,23 @@ sub process {
   if ($n eq "") {
     return;
   }
-  $n =~ s!\&!and!;
 
   my $ndate = @$daryref;
   my $ndoll = @$doryref;
   my $fname = sprintf "letter%d.tex", $letterno++;
-  print "Processing $ndate,$ndoll dates,dollars for '$n' --> $fname\n";
+  $thename = $nam{$n};
+  $thename =~ s!\&!and!;
+  print "Processing $ndate,$ndoll dates,dollars for '$n' ($thename) --> $fname\n";
 
   my $latex = $template;
-  $latex =~ s!NAMEGOESHERE!$n!;
+  $latex =~ s!NAMEGOESHERE!$thename!;
+
+  $a = $add{$n};
+  $c = $cty{$n};
+  if ($a and $c) { $address = "\\\\ $a \\\\ $c" }
+  else           { $address = ""                }
+  $address =~ s!\#!\\\#!;
+  $latex =~ s!ADDRESSGOESHERE!$address!;
 
   my $total = 0;
   my $half = int(@$daryref / 2);
@@ -71,40 +81,57 @@ sub process {
 
 
 use Getopt::Std;
-%opt = ();
-getopts('hv', \%opt);
+%opt = (t=>'template.tex');
+%opt = (a=>'addresses.csv');
+getopts('hvt:a:', \%opt);
 
 $usage  = "write_letters.pl giving.csv addresses.csv\n";
+$usage .= " -a addresses.csv\n";
+$usage .= " -t template.tex\n";
 $usage .= " -v      verbose\n";
 $usage .= " -h      help; print this message\n";
 
 
-$template = slurp('template.tex');
+$template  = slurp($opt{t});
 
+$csv = Text::CSV->new( {binary=>1} );
+open $fh, "<:encoding(utf8)", $opt{a} or die $opt{a}.": $!";
+while ($row = $csv->getline($fh)) {
+  $n       = $row->[2];
+  $nam{$n} = $row->[17];
+  $add{$n} = $row->[18];
+  $cty{$n} = $row->[19];
+}
+close $fh;
+$name = $new_name = '';
 
-
-while (<>) {
-  next if /Type.*Date.*Num.*Memo/;
-  next if /^\"total/i;
-  if (/hymnal/i) {
+$fname = $ARGV[0];
+$csv = Text::CSV->new( {binary=>1} );
+open $fh, "<:encoding(utf8)", $fname or die $fname.": $!";
+while ($row = $csv->getline($fh)) {
+  next if $row->[0] eq '' and $row->[1] eq 'Type';
+  next if $row->[0] =~ /^total/i;
+  if ($row->[4] =~ /Trinity Psalter Hymnal/) {
     print "Skipping hymnal record for $name\n";
     next;
   }
 
-  if (m!^\"(.*?)\",,,,,!) {
-    $new_name = $1;
+  $stophere=1;
+  if ($row->[0] ne '' and $row->[1] eq '' and $row->[2] eq ''
+                      and $row->[3] eq '' and $row->[4] eq '')
+  {
+    $new_name = $row->[0];             # we found a new name
+    process($name, \@dates, \@dollas); # process previous
 
-    process($name, \@dates, \@dollas);
-
-    $name = $new_name;
+    $name = $new_name;                 # reinit with new name
     @dates = @dollas = ();
   }
 
-  elsif (m!,\"(\d\d/\d\d/\d\d\d\d)\"!) { #,.*,(\-?\d+\.\d\d)(\s*)$!) {
+  elsif ($row->[2] =~ m!(\d\d/\d\d/\d\d\d\d)!) {
     $date  = $1;
     push @dates,  $date;
 
-    $dolla = (split /,/)[-3];
+    $dolla = $row->[8];
     push @dollas, $dolla;
   }
 }
