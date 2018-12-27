@@ -28,9 +28,6 @@ sub spew {
 }
 
 
-$template = slurp('template.tex');
-
-
 sub process {
   my $n       = shift;
   my $daryref = shift;
@@ -39,10 +36,17 @@ sub process {
   if ($n eq "") {
     return;
   }
+  $n =~ s!\&!and!;
+
+  my $ndate = @$daryref;
+  my $ndoll = @$doryref;
+  my $fname = sprintf "letter%d.tex", $letterno++;
+  print "Processing $ndate,$ndoll dates,dollars for '$n' --> $fname\n";
 
   my $latex = $template;
   $latex =~ s!NAMEGOESHERE!$n!;
 
+  my $total = 0;
   my $half = int(@$daryref / 2);
   my $rows = '';
   for $i (0..$half) {
@@ -51,17 +55,39 @@ sub process {
     my $date2 = $$daryref[$half+$i];
     my $dola2 = $$doryref[$half+$i];
     $rows .= "$date1 & $dola1 & $date2 & $dola2 \\\\ \n";
+    $total += $dola1 + $dola2;
   }
+  $totstr = sprintf "\\\$%.2f", $total;
+  $rows .= "\\hline {\\bf Total} & & & {\\bf $totstr} \\\\ \n";
   $latex =~ s!ROWSGOHERE!$rows!;
 
-  my $fname = sprintf "letter%d.tex", $letterno++;
+  print "Writing $fname\n"  if $opt{v};
   spew($fname, $latex);
+  print "pdflatex $fname\n" if $opt{v};
   `pdflatex $fname`;
+  print "Done with '$n'\n"  if $opt{v};
 }
 
 
+
+use Getopt::Std;
+%opt = ();
+getopts('hv', \%opt);
+
+$usage  = "write_letters.pl giving.csv addresses.csv\n";
+$usage .= " -v      verbose\n";
+$usage .= " -h      help; print this message\n";
+
+
+$template = slurp('template.tex');
+
+
+
 while (<>) {
-  if (/Type.*Date.*Num.*Memo/) {
+  next if /Type.*Date.*Num.*Memo/;
+  next if /^\"total/i;
+  if (/hymnal/i) {
+    print "Skipping hymnal record for $name\n";
     next;
   }
 
@@ -74,10 +100,11 @@ while (<>) {
     @dates = @dollas = ();
   }
 
-  elsif (m!,\"(\d\d/\d\d/\d\d\d\d)\",.*,(\-?\d+\.\d\d)(\s*)$!) {
+  elsif (m!,\"(\d\d/\d\d/\d\d\d\d)\"!) { #,.*,(\-?\d+\.\d\d)(\s*)$!) {
     $date  = $1;
-    $dolla = $2;
     push @dates,  $date;
+
+    $dolla = (split /,/)[-3];
     push @dollas, $dolla;
   }
 }
