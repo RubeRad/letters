@@ -113,6 +113,9 @@ while ($row = $csv->getline($fh)) {
   $nam{$n} = $row->[17];
   $add{$n} = $row->[18];
   $cty{$n} = $row->[19];
+  if ($row->[20]) {
+    $cty{$n} .= " \\\\ $row->[20]";
+  }
 }
 close $fh;
 
