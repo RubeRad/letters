@@ -34,6 +34,7 @@ sub process {
   my $n       = shift;
   my $daryref = shift;
   my $doryref = shift;
+  my $cknoref = shift;
 
   if ($n eq "") {
     return;
@@ -65,16 +66,16 @@ sub process {
   for $i (0..$nrows-1) {
     my $date1 = $$daryref[$i];
     my $dola1 = $$doryref[$i];
-    my $date2 = '';
-    my $dola2 = 0;
+    my $ckno1 = $$cknoref[$i];
     my $date2 = $$daryref[$nrows+$i];
     my $dola2 = $$doryref[$nrows+$i];
-    $rows .= "$date1 & $dola1 & $date2 & $dola2 \\\\ \n";
+    my $ckno2 = $$cknoref[$nrows+$i];
+    $rows .= "$date1 & $ckno1 & $dola1 & $date2 & $ckno2 & $dola2 \\\\ \n";
     $total += $dola1 + $dola2;
     print " + $dola1 + $dola2 --> $total\n" if $opt{v};
   }
   $totstr = sprintf "\\\$%.2f", $total;
-  $rows .= "\\hline {\\bf Total} & & & {\\bf $totstr} \\\\ \n";
+  $rows .= "\\hline {\\bf Total} & & & & & {\\bf $totstr} \\\\ \n";
   $latex =~ s!ROWSGOHERE!$rows!;
 
   print "Writing $fname\n"  if $opt{v};
@@ -132,15 +133,15 @@ while ($row = $csv->getline($fh)) {
 
   # Current name is done, process data to create a letter
   elsif ($row->[0] eq "Total $name") {
-    $total = $row->[-1] - $hymnal; # this is what the total should be
-    $check = process($name, \@dates, \@dollas); # process previous
+    $total = $row->[-2] - $hymnal; # this is what the total should be
+    $check = process($name, \@dates, \@dollas, \@cknos);
     $error = abs($check - $total);
     if ($error >= 0.01) { # less than a penny is just roundoff error
       $stophere=1;
       die "Total mismatch $check != $total\n";
     }
 
-    @dates = @dollas = ();         # reinit with empty data
+    @dates = @dollas = @cknos = ();# reinit with empty data
     $hymnal = 0;
   }
 
@@ -149,16 +150,14 @@ while ($row = $csv->getline($fh)) {
                          and $row->[3] eq '' and $row->[4] eq '')
   {
     $name = $row->[0];             # we found a new name
-    @dates = @dollas = ();         # start with empty data
+    @dates = @dollas = @cknos = ();# start with empty data
     $hymnal = 0;
   }
 
   # Another record for current name
   elsif ($row->[2] =~ m!(\d\d/\d\d/\d\d\d\d)!) {
-    $date  = $1;
-    push @dates,  $date;
-
-    $dolla = $row->[9];
-    push @dollas, $dolla;
+    push @dates,  $1;
+    push @dollas, $row->[9];
+    push @cknos,  $row->[11]
   }
 }
