@@ -57,15 +57,21 @@ sub process {
   $latex =~ s!ADDRESSGOESHERE!$address!;
 
   my $total = 0;
-  my $half = int(@$daryref / 2);
+  my $nrec = @$daryref;
+  print "Processing $nrec rows\n" if $opt{v};
+  # e.g. 12-->6, 13-->7
+  my $nrows = int(($nrec+1)/2);
   my $rows = '';
-  for $i (0..$half) {
+  for $i (0..$nrows-1) {
     my $date1 = $$daryref[$i];
     my $dola1 = $$doryref[$i];
-    my $date2 = $$daryref[$half+$i];
-    my $dola2 = $$doryref[$half+$i];
+    my $date2 = '';
+    my $dola2 = 0;
+    my $date2 = $$daryref[$nrows+$i];
+    my $dola2 = $$doryref[$nrows+$i];
     $rows .= "$date1 & $dola1 & $date2 & $dola2 \\\\ \n";
     $total += $dola1 + $dola2;
+    print " + $dola1 + $dola2 --> $total\n" if $opt{v};
   }
   $totstr = sprintf "\\\$%.2f", $total;
   $rows .= "\\hline {\\bf Total} & & & {\\bf $totstr} \\\\ \n";
@@ -76,6 +82,8 @@ sub process {
   print "pdflatex $fname\n" if $opt{v};
   `pdflatex $fname`;
   print "Done with '$n'\n"  if $opt{v};
+
+  return $total;
 }
 
 
@@ -85,12 +93,15 @@ use Getopt::Std;
 %opt = (a=>'addresses.csv');
 getopts('hvt:a:', \%opt);
 
-$usage  = "write_letters.pl giving.csv addresses.csv\n";
+$usage  = "write_letters.pl [-a addr.csv] [-t templ.tex] giving.csv\n";
 $usage .= " -a addresses.csv\n";
 $usage .= " -t template.tex\n";
 $usage .= " -v      verbose\n";
 $usage .= " -h      help; print this message\n";
-
+if ($opt{h}) {
+  print $usage;
+  exit;
+}
 
 $template  = slurp($opt{t});
 
@@ -103,38 +114,51 @@ while ($row = $csv->getline($fh)) {
   $cty{$n} = $row->[19];
 }
 close $fh;
-$name = $new_name = '';
 
 $fname = $ARGV[0];
 $csv = Text::CSV->new( {binary=>1} );
 open $fh, "<:encoding(utf8)", $fname or die $fname.": $!";
+#$csv->getline($fh); # skip ,"Type","Date",...
 while ($row = $csv->getline($fh)) {
-  next if $row->[0] eq '' and $row->[1] eq 'Type';
-  next if $row->[0] =~ /^total/i;
+
+  if ($row->[0] =~ /Total/) {
+    $stophere=1
+  }
+
   if ($row->[4] =~ /Trinity Psalter Hymnal/) {
     print "Skipping hymnal record for $name\n";
-    next;
+    $hymnal += $row->[9];
   }
 
-  $stophere=1;
-  if ($row->[0] ne '' and $row->[1] eq '' and $row->[2] eq ''
-                      and $row->[3] eq '' and $row->[4] eq '')
+  # Current name is done, process data to create a letter
+  elsif ($row->[0] eq "Total $name") {
+    $total = $row->[-1] - $hymnal; # this is what the total should be
+    $check = process($name, \@dates, \@dollas); # process previous
+    $error = abs($check - $total);
+    if ($error >= 0.01) { # less than a penny is just roundoff error
+      $stophere=1;
+      die "Total mismatch $check != $total\n";
+    }
+
+    @dates = @dollas = ();         # reinit with empty data
+    $hymnal = 0;
+  }
+
+  # First row for new name
+  elsif ($row->[0] ne '' and $row->[1] eq '' and $row->[2] eq ''
+                         and $row->[3] eq '' and $row->[4] eq '')
   {
-    $new_name = $row->[0];             # we found a new name
-    process($name, \@dates, \@dollas); # process previous
-
-    $name = $new_name;                 # reinit with new name
-    @dates = @dollas = ();
+    $name = $row->[0];             # we found a new name
+    @dates = @dollas = ();         # start with empty data
+    $hymnal = 0;
   }
 
+  # Another record for current name
   elsif ($row->[2] =~ m!(\d\d/\d\d/\d\d\d\d)!) {
     $date  = $1;
     push @dates,  $date;
 
-    $dolla = $row->[8];
+    $dolla = $row->[9];
     push @dollas, $dolla;
   }
 }
-
-# and one last time for the last donor
-process($name, \@dates, \@dollas);
