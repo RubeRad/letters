@@ -32,6 +32,7 @@ sub spew {
 
 sub process {
   my $n       = shift;
+  my $aaryref = shift;
   my $daryref = shift;
   my $doryref = shift;
   my $cknoref = shift;
@@ -43,17 +44,25 @@ sub process {
   my $ndate = @$daryref;
   my $ndoll = @$doryref;
   my $fname = sprintf "letter%d.tex", $letterno++;
-  $thename = $nam{$n};
+  if ($n =~ /(\w+),\s*(\w+)/) {
+      $thename = "$2 $1";
+  } else {
+      print STDERR "Don't understand name $n\n";
+      $thename = $n;
+  }
+  
   $thename =~ s!\&!and!;
   print "Processing $ndate,$ndoll dates,dollars for '$n' ($thename) --> $fname\n";
 
   my $latex = $template;
   $latex =~ s!NAMEGOESHERE!$thename!;
 
-  $a = $add{$n};
-  $c = $cty{$n};
-  if ($a and $c) { $address = "\\\\ $a \\\\ $c" }
-  else           { $address = ""                }
+  $a1 = $aaryref->[0];
+  $a2 = $aaryref->[1];
+  $a3 = sprintf("%s, %s %s", $aaryref->[2], $aaryref->[3], $aaryref->[4]);
+  if ($a2)    { $address = "\\\\ $a1 \\\\ $a2 \\\\ $a3" }
+  elsif ($a1) { $address = "\\\\ $a1 \\\\ $a3" }
+  else        { $address = ""                }
   $address =~ s!\#!\\\#!;
   $latex =~ s!ADDRESSGOESHERE!$address!;
 
@@ -92,10 +101,9 @@ sub process {
 use Getopt::Std;
 %opt = (t=>'template.tex');
 %opt = (a=>'addresses.csv');
-getopts('hvt:a:', \%opt);
+getopts('hvt:', \%opt);
 
-$usage  = "write_letters.pl [-a addr.csv] [-t templ.tex] giving.csv\n";
-$usage .= " -a addresses.csv\n";
+$usage  = "write_letters.pl [-t templ.tex] giving.csv\n";
 $usage .= " -t template.tex\n";
 $usage .= " -v      verbose\n";
 $usage .= " -h      help; print this message\n";
@@ -105,19 +113,6 @@ if ($opt{h}) {
 }
 
 $template  = slurp($opt{t});
-
-$csv = Text::CSV->new( {binary=>1} );
-open $fh, "<:encoding(utf8)", $opt{a} or die $opt{a}.": $!";
-while ($row = $csv->getline($fh)) {
-  $n       = $row->[2];
-  $nam{$n} = $row->[17];
-  $add{$n} = $row->[18];
-  $cty{$n} = $row->[19];
-  if ($row->[20]) {
-    $cty{$n} .= " \\\\ $row->[20]";
-  }
-}
-close $fh;
 
 $fname = $ARGV[0];
 $csv = Text::CSV->new( {binary=>1} );
@@ -129,15 +124,11 @@ while ($row = $csv->getline($fh)) {
     $stophere=1
   }
 
-  if ($row->[4] =~ /Trinity Psalter Hymnal/) {
-    print "Skipping hymnal record for $name\n";
-    $hymnal += $row->[9];
-  }
-
   # Current name is done, process data to create a letter
-  elsif ($row->[0] eq "Total $name") {
-    $total = $row->[-2] - $hymnal; # this is what the total should be
-    $check = process($name, \@dates, \@dollas, \@cknos);
+  if ($row->[0] eq "Total $name") {
+    $total = $row->[-2]; # this is what the total should be
+    @address = ($add1,$add2,$city,$stat,$zipp);
+    $check = process($name, \@address, \@dates, \@dollas, \@cknos);
     $error = abs($check - $total);
     if ($error >= 0.01) { # less than a penny is just roundoff error
       $stophere=1;
@@ -154,13 +145,18 @@ while ($row = $csv->getline($fh)) {
   {
     $name = $row->[0];             # we found a new name
     @dates = @dollas = @cknos = ();# start with empty data
-    $hymnal = 0;
   }
 
   # Another record for current name
   elsif ($row->[2] =~ m!(\d\d/\d\d/\d\d\d\d)!) {
     push @dates,  $1;
-    push @dollas, $row->[9];
-    push @cknos,  $row->[11]
+    push @dollas, $row->[10];
+    push @cknos,  $row->[12];
+    $add1 = $row->[3];
+    $add2 = $row->[4];
+    $city = $row->[5];
+    $stat = $row->[6];
+    $zipp = $row->[7];
+     
   }
 }
