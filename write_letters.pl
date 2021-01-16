@@ -2,6 +2,23 @@
 
 use Text::CSV; # sudo cpan Text::CSV
 
+# Expected columns:
+#  0: Name (by itself to head a new group of rows)
+#  1: Type
+#  2: Date
+#  3: Num (qb xaction num)
+#  4: Name Street1
+#  5: Name Street2
+#  6: Name City
+#  7: Name State
+#  8: Name Zip
+#  9: Memo
+# 10: Account
+# 11: Amount
+# 12: Balance (script verifies that the sum of the Amounts matches the last Balance)
+# 13: Check # (included in the report table)
+
+
 sub slurp {
   my @lns;
   for (@_) {
@@ -43,8 +60,8 @@ sub process {
 
   my $ndate = @$daryref;
   my $ndoll = @$doryref;
-  my $fname = sprintf "letter%d.tex", $letterno++;
-  if ($n =~ /(\w+),\s*(\w+)/) {
+  my $fname = sprintf "letter%02d.tex", $letterno++;
+  if ($n =~ /(.*),\s*(.*)/) {
       $thename = "$2 $1";
   } else {
       print STDERR "Don't understand name $n\n";
@@ -57,7 +74,7 @@ sub process {
   my $latex = $template;
   $latex =~ s!NAMEGOESHERE!$thename!;
 
-  $a1 = $aaryref->[0];
+  $a1 = $aaryref->[0];  
   $a2 = $aaryref->[1];
   $a3 = sprintf("%s, %s %s", $aaryref->[2], $aaryref->[3], $aaryref->[4]);
   if ($a2)    { $address = "\\\\ $a1 \\\\ $a2 \\\\ $a3" }
@@ -84,6 +101,7 @@ sub process {
     print " + $dola1 + $dola2 --> $total\n" if $opt{v};
   }
   $totstr = sprintf "\\\$%.2f", $total;
+  $totstr =~ s!(\d+)(\d{3})!$1,$2!;  # use commas for over 1000
   $rows .= "\\hline {\\bf Total} & & & & & {\\bf $totstr} \\\\ \n";
   $latex =~ s!ROWSGOHERE!$rows!;
 
@@ -121,7 +139,7 @@ open $fh, "<:encoding(utf8)", $fname or die $fname.": $!";
 while ($row = $csv->getline($fh)) {
 
   if ($row->[0] =~ /Total/) {
-    $stophere=1
+    $stophere=1 # for debugging
   }
 
   # Current name is done, process data to create a letter
@@ -148,15 +166,15 @@ while ($row = $csv->getline($fh)) {
   }
 
   # Another record for current name
-  elsif ($row->[2] =~ m!(\d\d/\d\d/\d\d\d\d)!) {
+  elsif ($row->[2] =~ m!(\d\d/\d\d/\d\d\d\d)!) {  # Date
     push @dates,  $1;
-    push @dollas, $row->[10];
-    push @cknos,  $row->[12];
-    $add1 = $row->[3];
-    $add2 = $row->[4];
-    $city = $row->[5];
-    $stat = $row->[6];
-    $zipp = $row->[7];
+    push @dollas, $row->[11];                     # Amount
+    push @cknos,  $row->[13];                     # Check #
+    $add1 = $row->[4];                            # Name Street1
+    $add2 = $row->[5];                            # Name Street2
+    $city = $row->[6];                            # Name City
+    $stat = $row->[7];                            # Name State
+    $zipp = $row->[8];                            # Name zip
      
   }
 }
