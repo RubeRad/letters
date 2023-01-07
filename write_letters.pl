@@ -72,8 +72,8 @@ sub process {
   print "Processing $ndate,$ndoll dates,dollars for '$n' ($thename) --> $fname\n";
 
   my $latex = $template;
-  $latex =~ s!NAMEGOESHERE!$thename!;
-
+  $latex  =~ s!NAMEGOESHERE!$thename!;
+  
   $a1 = $aaryref->[0];  
   $a2 = $aaryref->[1];
   $a3 = sprintf("%s, %s %s", $aaryref->[2], $aaryref->[3], $aaryref->[4]);
@@ -81,7 +81,7 @@ sub process {
   elsif ($a1) { $address = "\\\\ $a1 \\\\ $a3" }
   else        { $address = ""                }
   $address =~ s!\#!\\\#!;
-  $latex =~ s!ADDRESSGOESHERE!$address!;
+  $latex  =~ s!ADDRESSGOESHERE!$address!;
 
   my $total = 0;
   my $nrec = @$daryref;
@@ -111,6 +111,12 @@ sub process {
   `pdflatex $fname`;
   print "Done with '$n'\n"  if $opt{v};
 
+  $latex = $middle;
+  $latex =~ s!NAMEGOESHERE!$thename!;
+  $latex =~ s!ADDRESSGOESHERE!$address!;
+  $latex =~ s!ROWSGOHERE!$rows!;
+  $all_latex .= $latex;
+
   return $total;
 }
 
@@ -130,7 +136,13 @@ if ($opt{h}) {
   exit;
 }
 
-$template  = slurp($opt{t});
+$template = slurp($opt{t});
+$template =~ /(.*begin\{document\}\s+)(.*)(\\end\{document\}\s+)/s;
+$header = $1;
+$middle = $2;
+$footer = $3;
+$all_latex = $header;
+ 
 
 $fname = $ARGV[0];
 $csv = Text::CSV->new( {binary=>1} );
@@ -175,6 +187,13 @@ while ($row = $csv->getline($fh)) {
     $city = $row->[6];                            # Name City
     $stat = $row->[7];                            # Name State
     $zipp = $row->[8];                            # Name zip
-     
   }
+
 }
+
+
+print("Creating letters_all.pdf\n");
+$all_latex .= $footer;
+spew('letters_all.tex', $all_latex);
+`pdflatex letters_all.tex`;
+
